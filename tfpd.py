@@ -13,13 +13,13 @@ import os
 from geopy.distance import geodesic
 from keras.src.legacy.saving import legacy_h5_format
 from fastapi.middleware.cors import CORSMiddleware
-
+# FastAPI application setup
 app = FastAPI()
 
-# Allow frontend to access the backend
+# CORS middleware setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict this to your React app's domain if desired
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,29 +27,29 @@ app.add_middleware(
 
 warnings.filterwarnings("ignore")
 
-
-# Define the request model for the FastAPI POST request
+# Data model for the POST request
 class JourneyRequest(BaseModel):
     start: str
     target: str
     datetime: datetime.datetime
 
 
-# POST endpoint to handle the journey evaluation
+# Node class for graph pathfinding
+class Node():
+    def __init__(self, lat, long, neighbors):
+        self.cost = 99999 # cost to reach this node from start node
+        self.lat = lat # latitude of node (for dist calculations)
+        self.long = long # longitude of node (for dist calculations)
+        self.prev = -1 # scats number of previous node
+        self.neighbors = neighbors # scats numbers of neighbors in list form
+
+
+# POST endpoint to evaluate journey
 @app.post("/evaluate")
 async def evaluate_route(journey_request: JourneyRequest):
-    start = int(journey_request.start)
-    target = int(journey_request.target)
-    journey_datetime = journey_request.datetime
-
-    # Call the evaluate function and get the results
-    path_cost, path = evaluate(start, target, journey_datetime)
-
-    # Return the result as a JSON response
-    return {
-        "path_cost": path_cost,
-        "path": path
-    }
+    print(f"Received Start SCATS: {journey_request.start}, Target SCATS: {journey_request.target}")
+    path_cost, path = evaluate(journey_request.start, journey_request.target, journey_request.datetime)
+    return {"path_cost": path_cost, "path": path}
 
 # Node class for graph pathfinding
 class Node():
@@ -260,11 +260,11 @@ def evaluate(scats_start, scats_target, date_time):
         # scats sites can't be negative, so set NaNs to -1
         scats_sites[neighbor_dir].fillna(-1, inplace=True)
     
-    start_scats = 970
-    target_scats = 3180
+    start_scats = int(scats_start)
+    target_scats = int(scats_target)
     time = datetime.datetime.now()
 
-    #base_sec_time = (time - time.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
+    base_sec_time = (time - time.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
     base_sec_time = 1080
     weekday = time.weekday()
 
@@ -352,10 +352,9 @@ def evaluate(scats_start, scats_target, date_time):
     while prevy > 0:
         path.insert(0, prevy)
         prevy = graph[prevy].prev
-    
-    print(f"Path: {path}")
+    print(path)
+    return path_cost, path
 
-    return [(path_cost, path)]
 
 if __name__ == "__main__":
     import uvicorn
