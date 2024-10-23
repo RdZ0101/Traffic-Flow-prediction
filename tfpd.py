@@ -3,16 +3,53 @@ import datetime
 import warnings
 import numpy as np
 import pandas as pd
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import List
 from keras.models import load_model
 from tensorflow.keras.utils import plot_model
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import os
 from geopy.distance import geodesic
 from keras.src.legacy.saving import legacy_h5_format
+from fastapi.middleware.cors import CORSMiddleware
 
+app = FastAPI()
+
+# Allow frontend to access the backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # You can restrict this to your React app's domain if desired
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 warnings.filterwarnings("ignore")
 
+
+# Define the request model for the FastAPI POST request
+class JourneyRequest(BaseModel):
+    start: str
+    target: str
+    datetime: datetime.datetime
+
+
+# POST endpoint to handle the journey evaluation
+@app.post("/evaluate")
+async def evaluate_route(journey_request: JourneyRequest):
+    start = int(journey_request.start)
+    target = int(journey_request.target)
+    journey_datetime = journey_request.datetime
+
+    # Call the evaluate function and get the results
+    path_cost, path = evaluate(start, target, journey_datetime)
+
+    # Return the result as a JSON response
+    return {
+        "path_cost": path_cost,
+        "path": path
+    }
 
 # Node class for graph pathfinding
 class Node():
@@ -315,5 +352,11 @@ def evaluate(scats_start, scats_target, date_time):
     while prevy > 0:
         path.insert(0, prevy)
         prevy = graph[prevy].prev
+    
+    print(f"Path: {path}")
 
     return [(path_cost, path)]
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
