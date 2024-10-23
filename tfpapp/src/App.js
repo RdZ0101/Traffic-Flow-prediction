@@ -15,9 +15,9 @@ const MyMap = () => {
   const [start, setStart] = useState(null);
   const [target, setTarget] = useState(null);
   const [selecting, setSelecting] = useState(false);
-  const [selected, setSelected] = useState('start');
-  const [pathCoordinates, setPathCoordinates] = useState([]); // Store path coordinates for polyline
-  const [pathCost, setPathCost] = useState(null); // Store path cost
+  const [statusMessage, setStatusMessage] = useState('');
+  const [pathCoordinates, setPathCoordinates] = useState([]);
+  const [pathCost, setPathCost] = useState(null);
 
   const positionsWithLabels = [
     { position: [-37.8673031, 145.0915114], label: '970' },
@@ -62,24 +62,24 @@ const MyMap = () => {
     { position: [-37.812965, 145.00847], label: '4821' }
   ];
 
-  const handleMarkerClick = (label) => {
-    if (!selecting) return; 
-    if (selected === 'start') {
-      setStart(label);
-      setSelected('target');
-    } else if (selected === 'target') {
-      setTarget(label);
+  const handleMarkerClick = (label, position) => {
+    if (selecting && !start) {
+      setStart({ label, position });
+      setStatusMessage('Now select your destination.');
+    } else if (start && !target) {
+      setTarget({ label, position });
       setSelecting(false);
+      setStatusMessage('Start and destination selected! Click Submit to send.');
     }
   };
 
   const handleJourneyStart = () => {
     setStart(null);
     setTarget(null);
+    setPathCoordinates([]);
+    setPathCost(null);
     setSelecting(true);
-    setSelected('start');
-    setPathCoordinates([]); // Clear any existing path
-    setPathCost(null); // Reset path cost
+    setStatusMessage('Please select your start point.');
   };
 
   const handleSubmit = async () => {
@@ -89,7 +89,7 @@ const MyMap = () => {
         const response = await fetch('http://localhost:8000/evaluate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ start, target, datetime: dateTimeNow }),
+          body: JSON.stringify({ start: start.label, target: target.label, datetime: dateTimeNow }),
         });
 
         if (!response.ok) {
@@ -100,45 +100,37 @@ const MyMap = () => {
         console.log('Path Cost:', data.path_cost);
         console.log('Path:', data.path);
 
-        // Set the path cost
+        // Set the path cost and map SCATS IDs to positions
         setPathCost(data.path_cost);
-
-        // Map SCATS IDs (in data.path) to actual positions
         const newPathCoordinates = data.path.map(scatsId => {
           const match = positionsWithLabels.find(item => item.label === scatsId.toString());
           return match ? match.position : null;
-        }).filter(Boolean); // Remove any null values
+        }).filter(Boolean);
 
-        setPathCoordinates(newPathCoordinates); // Set path coordinates for polyline
-
+        setPathCoordinates(newPathCoordinates);
       } catch (error) {
         console.error('Error fetching journey data:', error);
       }
     } else {
-      alert('Please select both a start and a target marker.');
+      alert('Please select both a start and a destination.');
     }
   };
 
   const getMarkerColor = (label) => {
-    if (label === start) return 'blue';
-    if (label === target) return 'green';
-    return 'red';
+    if (start && label === start.label) return 'red';
+    if (target && label === target.label) return 'green';
+    return 'blue';
   };
 
   return (
     <>
-      {!selecting && (
-        <button onClick={handleJourneyStart} style={{ margin: '20px' }}>Start Journey</button>
-      )}
-      {start && target && (
-        <button onClick={handleSubmit} style={{ margin: '20px' }}>Submit</button>
-      )}
-      {pathCost && (
-        <div style={{ margin: '20px' }}>
-          <strong>Path Cost:</strong> {pathCost} seconds
-        </div>
-      )}
-      <MapContainer center={positionsWithLabels[0].position} zoom={13} scrollWheelZoom={false} style={{ height: "100vh", width: "100%" }}>
+      <div style={{ margin: '20px' }}>
+        <button onClick={handleJourneyStart}>Start Journey</button>
+        {start && target && <button onClick={handleSubmit}>Submit</button>}
+        <p>{statusMessage}</p>
+      </div>
+
+      <MapContainer center={[-37.8238567, 145.0643933]} zoom={13} scrollWheelZoom={false} style={{ height: '100vh', width: '100%' }}>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -148,7 +140,7 @@ const MyMap = () => {
             key={index}
             position={item.position}
             eventHandlers={{
-              click: () => handleMarkerClick(item.label),
+              click: () => handleMarkerClick(item.label, item.position),
             }}
             icon={L.icon({
               iconUrl: `https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png`,
@@ -160,16 +152,19 @@ const MyMap = () => {
               className: getMarkerColor(item.label),
             })}
           >
-            <Popup>
-              {item.label} <br /> Latitude: {item.position[0]}, Longitude: {item.position[1]}
-            </Popup>
+            <Popup>{item.label}</Popup>
           </Marker>
         ))}
-        {/* Plot the path using Polyline if path coordinates are available */}
         {pathCoordinates.length > 0 && (
           <Polyline positions={pathCoordinates} color="blue" />
         )}
       </MapContainer>
+
+      {pathCost && (
+        <div style={{ margin: '20px' }}>
+          <strong>Path Cost:</strong> {pathCost} seconds
+        </div>
+      )}
     </>
   );
 };
