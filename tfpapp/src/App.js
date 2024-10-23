@@ -1,80 +1,66 @@
-import { useState } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
+import React, { useState } from 'react';
+import { MapContainer, TileLayer, Marker, Polyline, useMapEvents } from 'react-leaflet';
 import axios from 'axios';
 import 'leaflet/dist/leaflet.css';
-import './App.css';
 
 function App() {
-  const [start, setStart] = useState('');
-  const [destination, setDestination] = useState('');
-  const [eta, setEta] = useState('');
-  const [path, setPath] = useState([]); // To store coordinates for the shortest path
+  const [start, setStart] = useState(null);
+  const [end, setEnd] = useState(null);
+  const [path, setPath] = useState(null);
 
-  const handleFormSubmit = async (e) => {
-    e.preventDefault();
-
+  // Function to handle click events on the map
+  const handleMapClick = async (type, lat, lng) => {
     try {
-      // Call the ML model or an API to get the shortest path and ETA
-      const response = await axios.post('http://your-api-url/shortest-path', {
-        start,
-        destination,
+      const response = await axios.post('http://127.0.0.1:8000/nearest-scats', {
+        lat: lat,
+        lng: lng,
       });
 
-      // Assuming the response contains ETA and a list of coordinates for the shortest path
-      const { eta, path } = response.data;
-      setEta(eta);
-      setPath(path); // Assuming the path is an array of lat/lng coordinates
+      const nearestScats = response.data.nearest_scats;
+
+      if (type === 'start') {
+        setStart(nearestScats);
+      } else if (type === 'end') {
+        setEnd(nearestScats);
+        if (start) {
+          // Request the path between start and end SCATS sites
+          const pathResponse = await axios.post('http://127.0.0.1:8000/path', {
+            start: start,
+            end: nearestScats,
+          });
+          setPath(pathResponse.data.path); // Update the path
+        }
+      }
     } catch (error) {
-      console.error('Error fetching data', error);
+      console.error('Error fetching SCATS site or path:', error);
     }
   };
 
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>Shortest Path Finder</h1>
-        <form onSubmit={handleFormSubmit}>
-          <div>
-            <label>Start Location: </label>
-            <input
-              type="text"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              placeholder="Enter start location"
-            />
-          </div>
-          <div>
-            <label>Destination: </label>
-            <input
-              type="text"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="Enter destination"
-            />
-          </div>
-          <button type="submit">Find Shortest Path</button>
-        </form>
-
-        {eta && <p>Estimated Time of Arrival (ETA): {eta} minutes</p>}
-
-        {path.length > 0 && (
-          <MapContainer
-            center={path[0]} // Center the map on the start location
-            zoom={13}
-            style={{ height: '400px', width: '100%' }}
-          >
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            />
-            <Marker position={path[0]} /> {/* Start marker */}
-            <Marker position={path[path.length - 1]} /> {/* Destination marker */}
-            <Polyline positions={path} color="blue" /> {/* Shortest path */}
-          </MapContainer>
-        )}
-      </header>
+    <div>
+      <h1>SCATS Path Finder</h1>
+      <MapContainer center={[-37.8136, 144.9631]} zoom={13} style={{ height: '500px', width: '100%' }}>
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        {start && <Marker position={[start.lat, start.lng]} />}
+        {end && <Marker position={[end.lat, end.lng]} />}
+        {path && <Polyline positions={path.map(site => [site.lat, site.lng])} />}
+        <MapEventsHandler onClick={handleMapClick} />
+      </MapContainer>
+      {path && <div>Shortest path includes {path.length} SCATS sites</div>}
     </div>
   );
+}
+
+// Handle map clicks to detect start and end points
+function MapEventsHandler({ onClick }) {
+  useMapEvents({
+    click: (event) => {
+      const { lat, lng } = event.latlng;
+      // If start is not set, click sets start, else sets end
+      onClick(!start ? 'start' : 'end', lat, lng);
+    },
+  });
+  return null;
 }
 
 export default App;
