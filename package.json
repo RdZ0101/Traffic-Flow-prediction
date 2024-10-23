@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "csvtojson": "^2.0.10",
+    "leaflet": "^1.9.4",
+    "papaparse": "^5.4.1",
+    "react-leaflet": "^4.2.1"
+  }
+}
