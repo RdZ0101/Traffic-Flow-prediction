@@ -136,7 +136,7 @@ def get_speed_from_flow_per_hr(x):
 # returns: predicted value, model to cache, scaler to cache
 def get_est_vflow_for_intersection(scats, lag_flow, cache_model, cache_scaler):
     if cache_model is False:
-        model_variant = 'gru'
+        model_variant = 'sae'
         model = load_model(f"model/{model_variant}/{scats}/{model_variant}_{scats}.h5", custom_objects={'mse': 'mse'})
     else:
         model = cache_model
@@ -241,7 +241,9 @@ def get_average_lag(df, scats, lag, weekday, time):
         lags.append([time_lags_total / time_lags_count])
 
     return lags
-    
+
+cache = {}
+
 def evaluate(scats_start, scats_target, date_time):
     scats_neighbors_file = 'data/scats_neighbors.csv'
 
@@ -265,7 +267,6 @@ def evaluate(scats_start, scats_target, date_time):
     time = datetime.datetime.now()
 
     base_sec_time = (time - time.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
-    base_sec_time = 1080
     weekday = time.weekday()
 
     start_intersection = scats_sites[scats_sites['SCAT number'] == start_scats]
@@ -280,7 +281,6 @@ def evaluate(scats_start, scats_target, date_time):
 
         return Node(pd_row['NB_Latitude'], pd_row['NB_Longitude'], neighbors)
 
-    cache = {}
 
     graph = {}
     queue = []
