@@ -5,12 +5,13 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from keras.models import load_model
 from tensorflow.keras.utils import plot_model
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import os
 from geopy.distance import geodesic
+import heapq
 from keras.src.legacy.saving import legacy_h5_format
 from fastapi.middleware.cors import CORSMiddleware
 # FastAPI application setup
@@ -33,6 +34,19 @@ class JourneyRequest(BaseModel):
     target: str
     datetime: datetime.datetime
 
+class AlternatePathRequest(BaseModel):
+    start_scats: int
+    target_scats: int
+    date_time: Optional[datetime.datetime] = None
+    num_paths: int = 2
+
+# New endpoint for finding alternate paths
+@app.post("/find_alternate_paths")
+async def find_alternate_paths_endpoint(request: AlternatePathRequest):
+    paths = find_alternate_paths(request.start_scats, request.target_scats, request.date_time, request.num_paths)
+    # Formatting response
+    formatted_paths = [{"path_cost": cost, "path": path} for cost, path in paths]
+    return {"alternate_paths": formatted_paths}
 
 # Node class for graph pathfinding
 class Node():
@@ -354,6 +368,92 @@ def evaluate(scats_start, scats_target, date_time):
         prevy = graph[prevy].prev
     print(path)
     return path_cost, path
+
+def find_alternate_paths(start_scats, target_scats, date_time, num_paths=2):
+    scats_neighbors_file = 'data/scats_neighbors.csv'
+    scats_data_file = 'scats-10-2006.csv'
+    scats_data = pd.read_csv(scats_data_file)
+    scats_sites = pd.read_csv(scats_neighbors_file)
+
+    neighbor_cols = ['North Neighbor', 'Northeast Neighbor', 'East Neighbor', 
+                     'Southeast Neighbor', 'South Neighbor', 'Southwest Neighbor',
+                     'West Neighbor', 'Northwest Neighbor']
+
+    for neighbor_dir in neighbor_cols:
+        scats_sites[neighbor_dir].fillna(-1, inplace=True)
+    def construct_node(pd_row):
+        neighbors = []
+        
+        for neighbor_dir in neighbor_cols:
+            neighbor = pd_row[neighbor_dir].item()
+            if neighbor > 0:
+                neighbors.append(int(neighbor))
+
+        return Node(pd_row['NB_Latitude'], pd_row['NB_Longitude'], neighbors)
+
+    graph = {}
+    for index, row in scats_sites.iterrows():
+        scats_num = int(row['SCAT number'])
+        graph[scats_num] = construct_node(scats_sites.iloc[index])
+
+    paths = []
+    blocked_edges = set()
+
+    for _ in range(num_paths):
+        path, path_cost = a_star_path(graph, start_scats, target_scats, blocked_edges)
+
+        if path:
+            paths.append((path_cost, path))
+
+            # Block edges along this path to encourage alternate routes
+            for i in range(len(path) - 1):
+                blocked_edges.add((path[i], path[i + 1]))
+        else:
+            break
+    print(paths)
+    return paths
+
+def a_star_path(graph, start, goal, blocked_edges):
+    open_set = [(0, start)]
+    came_from = {}
+    g_score = {node: float('inf') for node in graph}
+    g_score[start] = 0
+    f_score = {node: float('inf') for node in graph}
+    f_score[start] = heuristic_cost(graph[start], graph[goal])
+
+    while open_set:
+        current_f, current = heapq.heappop(open_set)
+
+        if current == goal:
+            return reconstruct_path(came_from, current), g_score[goal]
+
+        current_node = graph[current]
+
+        for neighbor in current_node.neighbors:
+            if (current, neighbor) in blocked_edges or (neighbor, current) in blocked_edges:
+                continue
+
+            neighbor_node = graph[neighbor]
+            tentative_g_score = g_score[current] + calculate_distance_for_coords(current_node.lat, current_node.long, neighbor_node.lat, neighbor_node.long) / 1000
+
+            if tentative_g_score < g_score[neighbor]:
+                came_from[neighbor] = current
+                g_score[neighbor] = tentative_g_score
+                f = tentative_g_score + heuristic_cost(neighbor_node, graph[goal])
+                f_score[neighbor] = f
+                heapq.heappush(open_set, (f, neighbor))
+
+    return None, float('inf')
+
+def heuristic_cost(node1, node2):
+    return calculate_distance_for_coords(node1.lat, node1.long, node2.lat, node2.long) / 1000
+
+def reconstruct_path(came_from, current):
+    path = [current]
+    while current in came_from:
+        current = came_from[current]
+        path.insert(0, current)
+    return path
 
 
 if __name__ == "__main__":

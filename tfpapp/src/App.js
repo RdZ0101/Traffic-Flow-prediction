@@ -11,6 +11,34 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
+// Function to fetch alternate paths from the backend
+async function fetchAlternatePaths(start, target, datetime, numPaths = 3) {
+  try {
+    const response = await fetch("http://localhost:8000/find_alternate_paths", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        start_scats: parseInt(start),  // Match the expected payload keys
+        target_scats: parseInt(target),
+        date_time: datetime,
+        num_paths: numPaths
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log("Alternate paths:", data.alternate_paths);
+    return data.alternate_paths;
+  } catch (error) {
+    console.error("Error fetching alternate paths:", error);
+  }
+}
+
 const MyMap = () => {
   const [start, setStart] = useState(null);
   const [target, setTarget] = useState(null);
@@ -19,6 +47,7 @@ const MyMap = () => {
   const [pathCoordinates, setPathCoordinates] = useState([]);
   const [pathCost, setPathCost] = useState(null);
   const [pathLabels, setPathLabels] = useState([]);
+  const [alternatePaths, setAlternatePaths] = useState([]); // State for alternate paths
 
   const positionsWithLabels = [
     { position: [-37.865704, 145.092782], label: '970' },
@@ -47,7 +76,7 @@ const MyMap = () => {
     { position: [-37.831383, 145.056684], label: '4040' },
     { position: [-37.845713, 145.053974], label: '4043' },
     { position: [-37.792524, 145.070455], label: '4051' },
-    { position: [-37.803506, 145.083143],label: '4057' },
+    { position: [-37.803506, 145.083143], label: '4057' },
     { position: [-37.812843, 145.081336], label: '4063' },
     { position: [-37.820108, 145.016480], label: '4262' },
     { position: [-37.821537, 145.026401], label: '4263' },
@@ -82,11 +111,13 @@ const MyMap = () => {
     setSelecting(true);
     setStatusMessage('Please select your start point.');
     setPathLabels([]);
+    setAlternatePaths([]); // Reset alternate paths on new journey start
   };
 
   const handleSubmit = async () => {
     if (start && target) {
       const dateTimeNow = new Date().toISOString();
+      setStatusMessage('Calculating the Shortest Path...');
       try {
         const response = await fetch('http://localhost:8000/evaluate', {
           method: 'POST',
@@ -97,25 +128,43 @@ const MyMap = () => {
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
-
+        setStatusMessage('Shortest Path Calculated!');
         const data = await response.json();
         console.log('Path Cost:', data.path_cost);
         console.log('Path:', data.path);
 
         setPathCost(data.path_cost);
 
-        // Set the path cost and map SCATS IDs to positions
-        setPathCost(data.path_cost);
         const newPathCoordinates = data.path.map(scatsId => {
           const match = positionsWithLabels.find(item => item.label === scatsId.toString());
           return match ? match.position : null;
         }).filter(Boolean);
 
         setPathLabels(data.path);
-
         setPathCoordinates(newPathCoordinates);
       } catch (error) {
         console.error('Error fetching journey data:', error);
+      }
+    } else {
+      alert('Please select both a start and a destination.');
+    }
+  };
+
+  // Fetch and display alternate paths
+  const handleGetAlternatePaths = async () => {
+    if (start && target) {
+      const dateTimeNow = new Date().toISOString();
+      const pathsData = await fetchAlternatePaths(start.label, target.label, dateTimeNow, 3);
+
+      if (pathsData) {
+        const newAlternatePaths = pathsData.map(pathObj => {
+          return pathObj.path.map(scatsId => {
+            const match = positionsWithLabels.find(item => item.label === scatsId.toString());
+            return match ? match.position : null;
+          }).filter(Boolean);
+        });
+
+        setAlternatePaths(newAlternatePaths);
       }
     } else {
       alert('Please select both a start and a destination.');
@@ -128,11 +177,14 @@ const MyMap = () => {
     return 'blue';
   };
 
+  const colors = ["orange", "purple", "green"]; // Colors for alternative paths
+
   return (
     <>
       <div style={{ margin: '20px' }}>
         <button onClick={handleJourneyStart}>Start Journey</button>
         {start && target && <button onClick={handleSubmit}>Submit</button>}
+        {start && target && <button onClick={handleGetAlternatePaths}>Get Alternate Paths</button>}
         <p>{statusMessage}</p>
 
         {pathLabels.length > 0 && (
@@ -173,6 +225,9 @@ const MyMap = () => {
         {pathCoordinates.length > 0 && (
           <Polyline positions={pathCoordinates} color="blue" />
         )}
+        {alternatePaths.map((path, index) => (
+          <Polyline key={index} positions={path} color={colors[index % colors.length]} />
+        ))}
       </MapContainer>
 
       {pathCost && (
