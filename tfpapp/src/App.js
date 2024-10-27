@@ -159,7 +159,7 @@ const MyMap = () => {
     if (start && target) {
       const dateTimeNow = new Date().toISOString();
       const pathsData = await fetchAlternatePaths(start.label, target.label, dateTimeNow, 3);
-  
+      setStatusMessage('Calculating alternative paths..');
       if (pathsData) {
         // Filter out the first path and keep the rest
         const newAlternatePaths = pathsData.slice(1).map((pathObj, index) => {
