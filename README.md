@@ -103,3 +103,8 @@ Network Errors:
 Missing Dependencies: 
        
     Run pip install -r requirements.txt for Python dependencies and npm install for Node dependencies.
+
+If nothing works, Contact one of the team members via email: 
+104316170@student.swin.edu.au
+104454504@student.swin.edu.au
+103988905@student.swin.edu.au
