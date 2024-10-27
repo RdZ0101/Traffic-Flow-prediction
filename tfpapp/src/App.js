@@ -120,6 +120,7 @@ const MyMap = () => {
 
   const handleSubmit = async () => {
     if (start && target) {
+      setAlternatePaths([]);
       const dateTimeNow = new Date().toISOString();
       setStatusMessage('Calculating the Shortest Path...');
       try {
@@ -157,26 +158,46 @@ const MyMap = () => {
   // Fetch and display alternate paths
   const handleGetAlternatePaths = async () => {
     if (start && target) {
+      setStatusMessage("Calculating alternative paths...");
       const dateTimeNow = new Date().toISOString();
       const pathsData = await fetchAlternatePaths(start.label, target.label, dateTimeNow, 3);
-      setStatusMessage('Calculating alternative paths..');
+  
       if (pathsData) {
-        // Filter out the first path and keep the rest
-        const newAlternatePaths = pathsData.slice(1).map((pathObj, index) => {
-          const coordinates = pathObj.path.map(scatsId => {
-            const match = positionsWithLabels.find(item => item.label === scatsId.toString());
-            return match ? match.position : null;
-          }).filter(Boolean);
-          
-          return { 
-            coordinates, 
-            travelTime: (pathObj.path_cost / 60).toFixed(2), // Convert travel time to minutes
-            pathLabels: pathObj.path, // Include the path labels
-            color: colors[index % colors.length] // Assign color
-          };
+        // Filter and process the alternate paths
+        const newAlternatePaths = [];
+        let foundSimilarPath = false;
+  
+        pathsData.forEach((pathObj, index) => {
+          // Convert each path to JSON for comparison
+          const pathLabelsJSON = JSON.stringify(pathObj.path);
+          const optimalPathJSON = JSON.stringify(pathLabels);
+  
+          if (pathLabelsJSON === optimalPathJSON) {
+            foundSimilarPath = true;
+          } else {
+            const coordinates = pathObj.path.map(scatsId => {
+              const match = positionsWithLabels.find(item => item.label === scatsId.toString());
+              return match ? match.position : null;
+            }).filter(Boolean);
+  
+            newAlternatePaths.push({
+              coordinates,
+              travelTime: (pathObj.path_cost / 60).toFixed(2), // Convert travel time to minutes
+              pathLabels: pathObj.path, // Include the path labels
+              color: colors[index % colors.length] // Assign color
+            });
+          }
         });
   
+        // Update state for alternate paths
         setAlternatePaths(newAlternatePaths);
+  
+        // Set the status message if a similar path was found
+        if (foundSimilarPath) {
+          setStatusMessage("Alternate paths calculated, alternate path identical to the optimal path found,therefore it's not displayed.");
+        } else {
+          setStatusMessage("Alternate paths calculated.");
+        }
       }
     } else {
       alert('Please select both a start and a destination.');
