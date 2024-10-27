@@ -1,0 +1,18 @@
+# Backend dependencies
+fastapi
+uvicorn
+pydantic
+numpy
+pandas
+scikit-learn
+tensorflow
+keras
+geopy
+
+# For CORS handling in FastAPI
+fastapi[all]
+
+# Additional dependencies for Leaflet maps
+# Run the following command separately in the project folder to install
+# the required libraries for React:
+# npm install react react-dom react-leaflet leaflet
