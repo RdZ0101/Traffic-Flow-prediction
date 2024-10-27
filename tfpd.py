@@ -400,7 +400,7 @@ def find_alternate_paths(start_scats, target_scats, date_time, num_paths=2):
     blocked_edges = set()
 
     for _ in range(num_paths):
-        path, path_cost = a_star_path(graph, start_scats, target_scats, blocked_edges)
+        path, path_cost = a_star_path(graph, start_scats, target_scats, blocked_edges, scats_data)
 
         if path:
             paths.append((path_cost, path))
@@ -413,7 +413,7 @@ def find_alternate_paths(start_scats, target_scats, date_time, num_paths=2):
     print(paths)
     return paths
 
-def a_star_path(graph, start, goal, blocked_edges):
+def a_star_path(graph, start, goal, blocked_edges, scats_data):
     open_set = [(0, start)]
     came_from = {}
     g_score = {node: float('inf') for node in graph}
@@ -434,16 +434,26 @@ def a_star_path(graph, start, goal, blocked_edges):
                 continue
 
             neighbor_node = graph[neighbor]
-            tentative_g_score = g_score[current] + calculate_distance_for_coords(current_node.lat, current_node.long, neighbor_node.lat, neighbor_node.long) / 1000
+            distance = calculate_distance_for_coords(current_node.lat, current_node.long, neighbor_node.lat, neighbor_node.long) / 1000
+
+            # Calculate flow and speed for accurate cost calculation
+            lag_data = get_average_lag(scats_data, neighbor, 12, datetime.datetime.now().weekday(), datetime.datetime.now().minute * 60)
+            lag_data = np.array(lag_data)
+            vflow = get_est_vflow_for_intersection(neighbor, lag_data, False, False)[0][0]
+            speed = get_speed_from_flow_per_hr(vflow * 4)  # Convert vflow to hourly flow
+
+            # Cost in seconds, including distance-to-speed conversion and additional delay
+            cost = (distance / speed) * 3600 + 30
+            tentative_g_score = g_score[current] + cost
 
             if tentative_g_score < g_score[neighbor]:
                 came_from[neighbor] = current
                 g_score[neighbor] = tentative_g_score
-                f = tentative_g_score + heuristic_cost(neighbor_node, graph[goal])
-                f_score[neighbor] = f
-                heapq.heappush(open_set, (f, neighbor))
+                f_score[neighbor] = tentative_g_score + heuristic_cost(neighbor_node, graph[goal])
+                heapq.heappush(open_set, (f_score[neighbor], neighbor))
 
     return None, float('inf')
+
 
 def heuristic_cost(node1, node2):
     return calculate_distance_for_coords(node1.lat, node1.long, node2.lat, node2.long) / 1000

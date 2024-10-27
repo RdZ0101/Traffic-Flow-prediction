@@ -49,6 +49,9 @@ const MyMap = () => {
   const [pathLabels, setPathLabels] = useState([]);
   const [alternatePaths, setAlternatePaths] = useState([]); // State for alternate paths
 
+  // Colors for alternative paths
+  const colors = ["orange", "purple", "green"];
+
   const positionsWithLabels = [
     { position: [-37.865704, 145.092782], label: '970' },
     { position: [-37.850432, 145.095693], label: '2000' },
@@ -91,6 +94,7 @@ const MyMap = () => {
     { position: [-37.827277, 145.017032], label: '4812' },
     { position: [-37.811416, 145.009825], label: '4821' }
   ];
+
 
   const handleMarkerClick = (label, position) => {
     if (selecting && !start) {
@@ -155,29 +159,36 @@ const MyMap = () => {
     if (start && target) {
       const dateTimeNow = new Date().toISOString();
       const pathsData = await fetchAlternatePaths(start.label, target.label, dateTimeNow, 3);
-
+  
       if (pathsData) {
-        const newAlternatePaths = pathsData.map(pathObj => {
-          return pathObj.path.map(scatsId => {
+        // Filter out the first path and keep the rest
+        const newAlternatePaths = pathsData.slice(1).map((pathObj, index) => {
+          const coordinates = pathObj.path.map(scatsId => {
             const match = positionsWithLabels.find(item => item.label === scatsId.toString());
             return match ? match.position : null;
           }).filter(Boolean);
+          
+          return { 
+            coordinates, 
+            travelTime: (pathObj.path_cost / 60).toFixed(2), // Convert travel time to minutes
+            pathLabels: pathObj.path, // Include the path labels
+            color: colors[index % colors.length] // Assign color
+          };
         });
-
+  
         setAlternatePaths(newAlternatePaths);
       }
     } else {
       alert('Please select both a start and a destination.');
     }
   };
+  
 
   const getMarkerColor = (label) => {
     if (start && label === start.label) return 'red';
     if (target && label === target.label) return 'green';
     return 'blue';
   };
-
-  const colors = ["orange", "purple", "green"]; // Colors for alternative paths
 
   return (
     <>
@@ -189,10 +200,29 @@ const MyMap = () => {
 
         {pathLabels.length > 0 && (
           <div>
-            <strong>Route:</strong> {pathLabels.join(' >> ')}
-            <div>
-              <strong>Total Travel Time:</strong> {(pathCost / 60).toFixed(2)} minutes
-            </div>
+            <strong>Optimal Route:</strong> {pathLabels.join(' >> ')}
+            <div><strong>Total Travel Time:</strong> {(pathCost / 60).toFixed(2)} minutes</div>
+          </div>
+        )}
+
+        {alternatePaths.length > 0 && (
+          <div style={{ marginTop: '20px' }}>
+            <h4>Alternate Routes</h4>
+            {alternatePaths.map((pathObj, index) => (
+              <div key={index} style={{ marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <div style={{
+                    width: '15px',
+                    height: '15px',
+                    backgroundColor: pathObj.color,
+                    marginRight: '8px',
+                    borderRadius: '50%',
+                  }} />
+                  <strong>Route {index + 1}:</strong> {pathObj.pathLabels.join(' >> ')}
+                </div>
+                <div><strong>Total Travel Time:</strong> {pathObj.travelTime} minutes</div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -225,16 +255,10 @@ const MyMap = () => {
         {pathCoordinates.length > 0 && (
           <Polyline positions={pathCoordinates} color="blue" />
         )}
-        {alternatePaths.map((path, index) => (
-          <Polyline key={index} positions={path} color={colors[index % colors.length]} />
+        {alternatePaths.map((pathObj, index) => (
+          <Polyline key={index} positions={pathObj.coordinates} color={pathObj.color} />
         ))}
       </MapContainer>
-
-      {pathCost && (
-        <div style={{ margin: '20px' }}>
-          <strong>Path Cost:</strong> {pathCost} seconds
-        </div>
-      )}
     </>
   );
 };
